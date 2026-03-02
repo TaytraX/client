@@ -1,0 +1,18 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = [
+    "renderer",
+]
+resolver = "2"
+
+[dependencies]
+winit = "*"
+wgpu = "*"
+log = "*"
+instant = "0.1.13"
+renderer = { path = "renderer" }
+pollster = "*"
