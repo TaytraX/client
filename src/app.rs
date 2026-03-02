@@ -5,10 +5,12 @@ use winit::dpi::{PhysicalSize, Size};
 use winit::event::{DeviceEvent, DeviceId, KeyEvent, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{WindowAttributes, WindowId};
-use crate::render_backend::State;
+use winit::window::{Window, WindowAttributes, WindowId};
+use renderer::render_backend::context::Context;
+use renderer::render_backend::State;
 
 pub struct App {
+    window: Option<Arc<Window>>,
     state: Option<State>,
     last_time: Instant
 }
@@ -16,6 +18,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
+            window: None,
             state: None,
             last_time: Instant::now()
         }
@@ -31,13 +34,21 @@ impl ApplicationHandler for App {
             800
         )));
         let window = Arc::new(event_loop.create_window(window_attribut).unwrap());
+        let context = pollster::block_on(Context::new(&window));
 
-        self.state = Some(pollster::block_on(State::new(window)));
+        self.state = Some(pollster::block_on(State::new(context)));
+
+        self.window = Some(window);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
         let state = match &mut self.state {
             Some(canvas) => canvas,
+            None => return
+        };
+
+        let window = match &mut self.window {
+            Some(window) => window,
             None => return
         };
 
@@ -55,7 +66,7 @@ impl ApplicationHandler for App {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                        let size = state.window.inner_size();
+                        let size = window.inner_size();
                         state.resize(size.width, size.height);
                     }
                     Err(e) => {
@@ -105,8 +116,8 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = &self.state {
-            state.window.request_redraw();
+        if let Some(window) = &self.window {
+            window.request_redraw();
         }
     }
 }

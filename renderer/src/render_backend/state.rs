@@ -1,16 +1,13 @@
-use std::sync::Arc;
 use std::time::Duration;
 use cgmath::{InnerSpace, Rotation3, Zero};
 use wgpu::include_wgsl;
 use wgpu::util::{DeviceExt};
 use crate::render_backend::{context::Context, instance::Instance, vertex::Vertex};
-use winit::window::Window;
 use crate::render_backend::camera::{Camera, CameraController, CameraUniform, Projection};
 use crate::render_backend::instance::InstanceRaw;
 use crate::render_backend::texture::Texture;
 
 pub struct State {
-    pub window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
@@ -93,9 +90,7 @@ const NUM_INSTANCES_PER_ROW: u32 = 10;
 const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
 
 impl State {
-    pub async fn new(window: Arc<Window>) -> Self {
-        let context = Context::new(&window.clone()).await;
-
+    pub async fn new(context: Context) -> Self {
         let shader = context.device.create_shader_module(include_wgsl!("../shaders/shader.wgsl").into());
 
         // Camera setup
@@ -277,7 +272,7 @@ impl State {
                     &camera_bind_group_layout,
                     &light_bind_group_layout,
                 ],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
         let diffuse_bind_group = context.device.create_bind_group(
             &wgpu::BindGroupDescriptor {
@@ -348,13 +343,13 @@ impl State {
                 alpha_to_coverage_enabled: false,
             },
             cache: None,
-            multiview: None,
+            multiview_mask: None,
         });
 
         let layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Light Pipeline Layout"),
             bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout],
-            push_constant_ranges: &[],
+            immediate_size: 0,
         });
 
         let light_shader = context.device.create_shader_module(include_wgsl!("../shaders/light.wgsl").into());
@@ -407,12 +402,11 @@ impl State {
             },
             // If the pipeline will be used with a multiview render pass, this
             // tells wgpu to render to just specific texture layers.
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
         Self {
-            window,
             render_pipeline,
             vertex_buffer,
             index_buffer,
@@ -502,6 +496,7 @@ impl State {
                 }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
+                multiview_mask: None,
             });
 
             render_pass.set_pipeline(&self.light_render_pipeline);

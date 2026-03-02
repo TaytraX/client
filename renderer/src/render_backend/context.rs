@@ -23,7 +23,7 @@ impl Context {
 
         let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
             compatible_surface: Some(&surface),
-            force_fallback_adapter: true,
+            force_fallback_adapter: false,
             ..Default::default()
         }).await.unwrap();
 
