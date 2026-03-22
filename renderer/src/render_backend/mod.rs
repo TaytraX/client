@@ -1,8 +1,8 @@
 pub mod context;
-mod state;
+pub mod state;
 mod camera;
 mod texture;
 pub mod instance;
-mod vertex;
+pub mod vertex;
 
 pub use state::State;

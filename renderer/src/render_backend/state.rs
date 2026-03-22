@@ -1,5 +1,5 @@
 use std::time::Duration;
-use cgmath::{InnerSpace, Rotation3, Zero};
+use cgmath::{InnerSpace, Rotation3, Vector3, Zero};
 use wgpu::include_wgsl;
 use wgpu::util::{DeviceExt};
 use crate::render_backend::{context::Context, instance::Instance, vertex::Vertex};
@@ -10,20 +10,21 @@ use crate::render_backend::texture::Texture;
 pub struct State {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
+    veritces : Vec<Vertex>,
     index_buffer: wgpu::Buffer,
-    diffuse_bind_group: wgpu::BindGroup,
     projection: Projection,
-    instances: Vec<Instance>,
+    depth_texture: Texture,
+    pub instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera: Camera,
     pub camera_controller: CameraController,
     camera_bind_group: wgpu::BindGroup,
-    depth_texture: Texture,
     context: Context,
     light_uniform: LightUniform,
     light_buffer: wgpu::Buffer,
+    light_vertex_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
 }
@@ -41,40 +42,40 @@ struct LightUniform {
 
 const VERTICES: &[Vertex] = &[
     // Front face (+Z) - normal pointant vers +Z
-    Vertex { position: [-0.5, -0.5,  0.5], tex_coords: [0.0, 0.5], normal: [0.0, 0.0, 1.0] },
-    Vertex { position: [ 0.5, -0.5,  0.5], tex_coords: [0.5, 0.5], normal: [0.0, 0.0, 1.0] },
-    Vertex { position: [ 0.5,  0.5,  0.5], tex_coords: [0.5, 0.0], normal: [0.0, 0.0, 1.0] },
-    Vertex { position: [-0.5,  0.5,  0.5], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, 1.0] },
+    Vertex { position: [-0.5, -0.5,  0.5] },
+    Vertex { position: [ 0.5, -0.5,  0.5] },
+    Vertex { position: [ 0.5,  0.5,  0.5] },
+    Vertex { position: [-0.5,  0.5,  0.5] },
 
     // Back face (-Z) - normal pointant vers -Z
-    Vertex { position: [ 0.5, -0.5, -0.5], tex_coords: [0.0, 0.5], normal: [0.0, 0.0, -1.0] },
-    Vertex { position: [-0.5, -0.5, -0.5], tex_coords: [0.5, 0.5], normal: [0.0, 0.0, -1.0] },
-    Vertex { position: [-0.5,  0.5, -0.5], tex_coords: [0.5, 0.0], normal: [0.0, 0.0, -1.0] },
-    Vertex { position: [ 0.5,  0.5, -0.5], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, -1.0] },
+    Vertex { position: [ 0.5, -0.5, -0.5] },
+    Vertex { position: [-0.5, -0.5, -0.5] },
+    Vertex { position: [-0.5,  0.5, -0.5] },
+    Vertex { position: [ 0.5,  0.5, -0.5] },
 
     // Left face (-X) - normal pointant vers -X
-    Vertex { position: [-0.5, -0.5, -0.5], tex_coords: [0.0, 0.5], normal: [-1.0, 0.0, 0.0] },
-    Vertex { position: [-0.5, -0.5,  0.5], tex_coords: [0.5, 0.5], normal: [-1.0, 0.0, 0.0] },
-    Vertex { position: [-0.5,  0.5,  0.5], tex_coords: [0.5, 0.0], normal: [-1.0, 0.0, 0.0] },
-    Vertex { position: [-0.5,  0.5, -0.5], tex_coords: [0.0, 0.0], normal: [-1.0, 0.0, 0.0] },
+    Vertex { position: [-0.5, -0.5, -0.5] },
+    Vertex { position: [-0.5, -0.5,  0.5] },
+    Vertex { position: [-0.5,  0.5,  0.5] },
+    Vertex { position: [-0.5,  0.5, -0.5] },
 
     // Right face (+X) - normal pointant vers +X
-    Vertex { position: [ 0.5, -0.5,  0.5], tex_coords: [0.0, 0.5], normal: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5, -0.5, -0.5], tex_coords: [0.5, 0.5], normal: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5, -0.5], tex_coords: [0.5, 0.0], normal: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5,  0.5], tex_coords: [0.0, 0.0], normal: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5, -0.5,  0.5] },
+    Vertex { position: [ 0.5, -0.5, -0.5] },
+    Vertex { position: [ 0.5,  0.5, -0.5] },
+    Vertex { position: [ 0.5,  0.5,  0.5] },
 
     // Top face (+Y) - normal pointant vers +Y
-    Vertex { position: [-0.5,  0.5,  0.5], tex_coords: [0.0, 0.5], normal: [0.0, 1.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5,  0.5], tex_coords: [0.5, 0.5], normal: [0.0, 1.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5, -0.5], tex_coords: [0.5, 0.0], normal: [0.0, 1.0, 0.0] },
-    Vertex { position: [-0.5,  0.5, -0.5], tex_coords: [0.0, 0.0], normal: [0.0, 1.0, 0.0] },
+    Vertex { position: [-0.5,  0.5,  0.5] },
+    Vertex { position: [ 0.5,  0.5,  0.5] },
+    Vertex { position: [ 0.5,  0.5, -0.5] },
+    Vertex { position: [-0.5,  0.5, -0.5] },
 
     // Bottom face (-Y) - normal pointant vers -Y
-    Vertex { position: [-0.5, -0.5, -0.5], tex_coords: [0.0, 0.5], normal: [0.0, -1.0, 0.0] },
-    Vertex { position: [ 0.5, -0.5, -0.5], tex_coords: [0.5, 0.5], normal: [0.0, -1.0, 0.0] },
-    Vertex { position: [ 0.5, -0.5,  0.5], tex_coords: [0.5, 0.0], normal: [0.0, -1.0, 0.0] },
-    Vertex { position: [-0.5, -0.5,  0.5], tex_coords: [0.0, 0.0], normal: [0.0, -1.0, 0.0] },
+    Vertex { position: [-0.5, -0.5, -0.5] },
+    Vertex { position: [ 0.5, -0.5, -0.5] },
+    Vertex { position: [ 0.5, -0.5,  0.5] },
+    Vertex { position: [-0.5, -0.5,  0.5] },
 ];
 
 const INDICES: &[u16] = &[
@@ -87,7 +88,7 @@ const INDICES: &[u16] = &[
 ];
 
 const NUM_INSTANCES_PER_ROW: u32 = 10;
-const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
+const INSTANCE_DISPLACEMENT: Vector3<f32> = Vector3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
 
 impl State {
     pub async fn new(context: Context) -> Self {
@@ -141,7 +142,17 @@ impl State {
             }],
         });
 
+        let depth_texture = Texture::create_depth_texture(&context, "depth_texture");
+
         let vertex_buffer = context.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+
+        let light_vertex_buffer = context.device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
                 contents: bytemuck::cast_slice(VERTICES),
@@ -157,61 +168,16 @@ impl State {
             }
         );
 
-        let texture_bind_group_layout =
-            context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
-
-        let diffuse_bytes = include_bytes!("../image/img.png");
-        let normal_bytes = include_bytes!("../image/normal.png");
-        let diffuse_texture = Texture::from_bytes(&context.device, &context.queue, diffuse_bytes, "happy-tree.png").unwrap();
-        let normal_texture = Texture::from_bytes(&context.device, &context.queue, normal_bytes, "normal.png").unwrap();
-        let depth_texture = Texture::create_depth_texture(&context.device, &context.config, "depth_texture");
-
-        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let position = cgmath::Vector3 { x: x as f32 * 2.0, y: 0.0, z: z as f32 * 2.0 } - INSTANCE_DISPLACEMENT;
+        let instances = (0..1).flat_map(|z| {
+            (0..1).map(move |x| {
+                let position = Vector3 { x: x as f32 * 2.0, y: 0.0, z: z as f32 * 2.0 } - INSTANCE_DISPLACEMENT;
 
                 let rotation = if position.is_zero() {
                     // this is needed so an object at (0, 0, 0) won't get scaled to zero
                     // as Quaternions can affect scale if they're not created correctly
-                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                    cgmath::Quaternion::from_axis_angle(Vector3::unit_z(), cgmath::Deg(0.0))
                 } else {
-                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(0.0))
                 };
 
                 Instance { position, rotation }
@@ -268,36 +234,11 @@ impl State {
             context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &texture_bind_group_layout,
                     &camera_bind_group_layout,
                     &light_bind_group_layout,
                 ],
                 immediate_size: 0,
             });
-        let diffuse_bind_group = context.device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&normal_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
-                    },
-                ],
-                label: Some("diffuse_bind_group"),
-            }
-        );
 
         let render_pipeline = context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -409,9 +350,10 @@ impl State {
         Self {
             render_pipeline,
             vertex_buffer,
+            veritces: Vec::from(VERTICES),
             index_buffer,
-            diffuse_bind_group,
             projection,
+            depth_texture,
             instances,
             instance_buffer,
             camera_uniform,
@@ -419,10 +361,10 @@ impl State {
             camera,
             camera_controller: CameraController::new(4.0, 0.4),
             camera_bind_group,
-            depth_texture,
             context,
             light_uniform,
             light_buffer,
+            light_vertex_buffer,
             light_bind_group,
             light_render_pipeline,
         }
@@ -430,37 +372,42 @@ impl State {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.projection.resize(width, height);
-        self.depth_texture = Texture::create_depth_texture(&self.context.device, &self.context.config, "depth_texture");
         if width > 0 && height > 0 {
             self.context.config.width = width;
             self.context.config.height = height;
             self.context.surface.configure(&self.context.device, &self.context.config);
-            self.context.is_surface_configured = true;
         }
     }
 
-    pub fn update(&mut self, delta_time: Duration) {
+    pub fn update(&mut self, delta_time: Duration, new_vert: Vec<Vertex>) {
         self.camera_controller.update_camera(&mut self.camera, delta_time);
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
-        self.light_uniform.position[0] += 0.1;
+        self.light_uniform.position[0] += 3.0 * delta_time.as_secs_f32();
+        let instance_data = self.instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        self.context.queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instance_data));
         self.context.queue.write_buffer(
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
+
         self.context.queue.write_buffer(
             &self.light_buffer,
             0,
             bytemuck::cast_slice(&[self.light_uniform]),
         );
+
+        self.vertex_buffer = self.context.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&new_vert),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+        self.veritces = new_vert;
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        // S'assurer que la fenêtre a ete configurer, sinon pas besoin de continuer
-        if !self.context.is_surface_configured {
-            return Ok(());
-        };
-
         let output = self.context.surface.get_current_texture()?;
 
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -502,20 +449,19 @@ impl State {
             render_pass.set_pipeline(&self.light_render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &self.light_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(0, self.light_vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+            render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..self.instances.len() as _);
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(2, &self.light_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..self.instances.len() as _);
+            render_pass.draw(0..self.veritces.len() as u32, 0..1);
         }
 
         // submit will accept anything that implements IntoIter

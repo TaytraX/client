@@ -16,3 +16,4 @@ log = "*"
 instant = "0.1.13"
 renderer = { path = "renderer" }
 pollster = "*"
+bytemuck = "1.25.0"
