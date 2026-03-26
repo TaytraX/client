@@ -407,6 +407,17 @@ impl State {
         self.veritces = new_vert;
     }
 
+    pub fn update_vert(&mut self, new_vert: Vec<Vertex>) {
+        self.vertex_buffer = self.context.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&new_vert),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+        self.veritces = new_vert;
+    }
+
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.context.surface.get_current_texture()?;
 
