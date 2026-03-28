@@ -1,7 +1,6 @@
 mod app;
 mod networking;
 mod chunky;
-mod player;
 
 use std::sync::mpsc;
 use networking::*;
