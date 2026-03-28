@@ -376,10 +376,11 @@ impl State {
             self.context.config.width = width;
             self.context.config.height = height;
             self.context.surface.configure(&self.context.device, &self.context.config);
+            self.depth_texture = Texture::create_depth_texture(&self.context, "depth_texture");
         }
-    }
+        }
 
-    pub fn update(&mut self, delta_time: Duration, new_vert: Vec<Vertex>) {
+    pub fn update(&mut self, delta_time: Duration) {
         self.camera_controller.update_camera(&mut self.camera, delta_time);
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.light_uniform.position[0] += 3.0 * delta_time.as_secs_f32();
@@ -396,15 +397,6 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.light_uniform]),
         );
-
-        self.vertex_buffer = self.context.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&new_vert),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
-        self.veritces = new_vert;
     }
 
     pub fn update_vert(&mut self, new_vert: Vec<Vertex>) {
@@ -466,11 +458,10 @@ impl State {
             render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..self.instances.len() as _);
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.light_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.light_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             render_pass.draw(0..self.veritces.len() as u32, 0..1);
         }

@@ -1,46 +1,66 @@
-use std::ffi::CString;
-use std::thread;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::io::Read;
+use std::net::{TcpStream, UdpSocket};
+use bytemuck::Pod;
 
-type HANDLE = *mut std::ffi::c_void;
-type LPVOID = *mut std::ffi::c_void;
-
-#[link(name = "kernel32")]
-unsafe extern "system" {
-    fn OpenFileMappingA(
-        dwDesiredAccess: u32,
-        bInheritHandle: i32,
-        lpName: *const i8,
-    ) -> HANDLE;
-
-    fn MapViewOfFile(
-        hFileMappingObject: HANDLE,
-        dwDesiredAccess: u32,
-        dwFileOffsetHigh: u32,
-        dwFileOffsetLow: u32,
-        dwNumberOfBytesToMap: usize,
-    ) -> LPVOID;
+pub struct Connection {
+    tcp_stream: TcpStream,
+    udp_socket: UdpSocket,
+}
+#[derive(Copy, Clone, Pod, bytemuck::Zeroable)]
+#[repr(C)]
+struct TransformationComponent {
+    position: [f64; 3],
+    rotation: [f64; 3],
 }
 
-const FILE_MAP_READ: u32 = 0x0004;
+static COMPONENTS: Mutex<Vec<TransformationComponent>> = Mutex::new(Vec::new());
+pub static CHUNKS: Mutex<Vec<[f64; 32768]>> = Mutex::new(Vec::new());
+pub static mut CHUNKS_DIRTY: bool = false;
 
-pub fn get_chunk() -> Box<[f64; 32768]> {
-    let handle = loop {
-        let h = unsafe { OpenFileMappingA(FILE_MAP_READ, 0, CString::new("SCENE").unwrap().as_ptr()) };
+impl Connection {
+    pub fn new() -> Self {
+        let tcp_stream = TcpStream::connect("127.0.0.1:5000").unwrap();
+        println!("TCP connection established");
 
-        if !h.is_null() {
-            break h;
+        let udp_socket = UdpSocket::bind("127.0.0.1:9001").unwrap();
+        udp_socket.set_nonblocking(true).unwrap();
+        println!("connected to udp");
+
+        Self {
+            tcp_stream,
+            udp_socket,
         }
+    }
 
-        println!("Waiting for shared memory...");
-        thread::sleep(Duration::from_millis(500));
-    };
+    pub fn update(&mut self) {
+        self.receive_chunk();
+        self.receive_component();
+    }
 
-    let ptr = unsafe { MapViewOfFile(handle, FILE_MAP_READ, 0, 0, 32768 * size_of::<f64>()) };
+    fn receive_chunk(&mut self) {
+        let mut buf = [0; 262144];
 
-    let slice = unsafe {
-        std::slice::from_raw_parts(ptr as *const f64, 32768)
-    };
+        match self.tcp_stream.read_exact(&mut buf) {
+            Ok(_) => {
+                println!("received chunk");
+                unsafe { CHUNKS_DIRTY = true; }
+                let teste = unsafe { std::mem::transmute(buf) };
+                CHUNKS.try_lock().unwrap().push(teste);
+            }
+            Err(_) => { return; }
+        }
+    }
 
-    Box::new(slice.try_into().expect("slice fits into f64"))
+    fn receive_component(&mut self) {
+        let mut buf = [0; 65507];
+        match self.udp_socket.recv_from(&mut buf) {
+            Ok((_size, _)) => {
+                let len = u32::from_le_bytes(buf[0..4].try_into().unwrap()) as usize;
+                COMPONENTS.try_lock().unwrap().extend_from_slice(bytemuck::cast_slice(&buf[4..4 + len * size_of::<TransformationComponent>()]))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(e) => eprintln!("UDP error: {e}"),
+        }
+    }
 }

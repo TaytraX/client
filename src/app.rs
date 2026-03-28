@@ -2,23 +2,23 @@ use std::sync::{mpsc, Arc};
 use instant::Instant;
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
-use winit::event::{DeviceEvent, DeviceId, Event, KeyEvent, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, KeyEvent, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 use renderer::render_backend::context::Context;
 use renderer::render_backend::State;
-use crate::chunky::build_chunk;
+use renderer::render_backend::vertex::Vertex;
 
 pub struct App {
     window: Option<Arc<Window>>,
     state: Option<State>,
     last_time: Instant,
-    rx: mpsc::Receiver<Box<[f64; 32768]>>,
+    rx: mpsc::Receiver<Vec<Vertex>>,
 }
 
 impl App {
-    pub fn new(receiver: mpsc::Receiver<Box<[f64; 32768]>>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<Vec<Vertex>>) -> Self {
         Self {
             window: None,
             state: None,
@@ -64,7 +64,11 @@ impl ApplicationHandler for App {
                 let dt = self.last_time.elapsed();
                 self.last_time = Instant::now();
 
-                state.update(dt, build_chunk(self.rx.recv().unwrap()));
+                if let Ok(vertices) = self.rx.try_recv() {
+                    state.update_vert(vertices);
+                }
+
+                state.update(dt);
                 match state.render() {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated

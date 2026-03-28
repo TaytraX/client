@@ -1,4 +1,5 @@
 use renderer::render_backend::vertex::Vertex;
+use crate::networking::{CHUNKS, CHUNKS_DIRTY};
 
 enum Face {
     Left,
@@ -9,30 +10,36 @@ enum Face {
     Back,
 }
 
-pub fn build_chunk(chunk: Box<[f64; 32768]>) -> Vec<Vertex> {
+pub fn build_chunk() -> Vec<Vertex> {
     const T: usize = 32;
 
     let idx = |x: usize, y: usize, z: usize| y * (T * T) + z * T + x;
 
     let mut render_chunk: Vec<Vertex> = Vec::with_capacity(32768 * 6 / 2);
 
-    for i in 0..chunk.len() {
-        if chunk[i] <= 0.0 {
-            continue;
+    for chunk in CHUNKS.try_lock().unwrap().to_vec() {
+        for i in 0..chunk.len() {
+            if chunk[i] <= 0.0 {
+                continue;
+            }
+
+            let x = i % T;
+            let z = (i / T) % T;
+            let y = i / (T * T);
+            let position = (x, y, z);
+
+            if y == 0     || chunk[idx(x, y - 1, z)] <= 0.0 { gen_face(Face::Down,  position, &mut render_chunk); }
+            if y == T - 1 || chunk[idx(x, y + 1, z)] <= 0.0 { gen_face(Face::Up,    position, &mut render_chunk); }
+            if z == T - 1 || chunk[idx(x, y, z + 1)] <= 0.0 { gen_face(Face::Front, position, &mut render_chunk); }
+            if z == 0     || chunk[idx(x, y, z - 1)] <= 0.0 { gen_face(Face::Back,  position, &mut render_chunk); }
+            if x == 0     || chunk[idx(x - 1, y, z)] <= 0.0 { gen_face(Face::Left,  position, &mut render_chunk); }
+            if x == T - 1 || chunk[idx(x + 1, y, z)] <= 0.0 { gen_face(Face::Right, position, &mut render_chunk); }
         }
-
-        let x = i % T;
-        let z = (i / T) % T;
-        let y = i / (T * T);
-        let position = (x, y, z);
-
-        if y == 0     || chunk[idx(x, y - 1, z)] <= 0.0 { gen_face(Face::Down,  position, &mut render_chunk); }
-        if y == T - 1 || chunk[idx(x, y + 1, z)] <= 0.0 { gen_face(Face::Up,    position, &mut render_chunk); }
-        if z == 0     || chunk[idx(x, y, z - 1)] <= 0.0 { gen_face(Face::Front, position, &mut render_chunk); }
-        if z == T - 1 || chunk[idx(x, y, z + 1)] <= 0.0 { gen_face(Face::Back,  position, &mut render_chunk); }
-        if x == 0     || chunk[idx(x - 1, y, z)] <= 0.0 { gen_face(Face::Left,  position, &mut render_chunk); }
-        if x == T - 1 || chunk[idx(x + 1, y, z)] <= 0.0 { gen_face(Face::Right, position, &mut render_chunk); }
     }
+
+    unsafe { CHUNKS_DIRTY = false };
+    CHUNKS.try_lock().unwrap().clear();
+    println!("Chunk build successful");
 
     render_chunk
 }

@@ -55,7 +55,7 @@ const SHININESS: f32 = 32.0;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let object_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    let object_color = vec4<f32>(0.1, 0.6, 0.2, 1.0);
 
     let dx = dpdx(in.world_position);
     let dy = dpdy(in.world_position);
